@@ -1,0 +1,125 @@
+name: colmena
+
+services:
+  colmena-postgres:
+    image: postgres:13
+    container_name: colmena_postgres
+    hostname: postgres
+    restart: unless-stopped
+    environment:
+      - POSTGRES_USER=colmena
+      - POSTGRES_PASSWORD=colmena-changeme
+      - POSTGRES_DB=colmena
+    volumes:
+      - /DATA/AppData/$AppID/pg_data:/var/lib/postgresql/data
+    networks:
+      - colmena_net
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U colmena -d colmena"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  colmena-app:
+    image: communityfirst/colmena-app:latest
+    container_name: colmena_app
+    hostname: colmena-app
+    restart: unless-stopped
+    depends_on:
+      colmena-postgres:
+        condition: service_healthy
+    ports:
+      - target: 80
+        published: "8080"
+        protocol: tcp
+      - target: 8000
+        published: "8000"
+        protocol: tcp
+    environment:
+      - STAGE=prod
+      - DEBUG=false
+      - PORT=8000
+      - POSTGRES_HOSTNAME=colmena-postgres
+      - POSTGRES_PORT=5432
+      - POSTGRES_DATABASE=colmena
+      - POSTGRES_USERNAME=colmena
+      - POSTGRES_PASSWORD=colmena-changeme
+      - COLMENA_SECRET_KEY=please-change-this-colmena-secret-key
+      - SECRET_KEY=please-change-this-secret-key
+      - ALLOWED_HOSTS=*
+      - CSRF_TRUSTED_ORIGINS=http://localhost:8080
+      - CORS_ALLOWED_ORIGINS=http://localhost:8080
+      - BACKEND_HOSTNAME=colmena-app
+      - FRONTEND_HOSTNAME=colmena-app
+      - MEDIA_ROOT=/opt/app/media
+      - STATIC_ROOT=/opt/app/static
+      - SUPERADMIN_EMAIL=admin@colmena.local
+      - SUPERADMIN_PASSWORD=colmena-changeme
+      - NEXTCLOUD_ADMIN_USER=admin
+      - NEXTCLOUD_ADMIN_PASSWORD=colmena-changeme
+      - GUNICORN_WORKERS=2
+      - GUNICORN_WORKER_TIMEOUT=120
+      # Optional integrations - blank in v1, point at your own instance:
+      - EMAIL_HOST=
+      - EMAIL_PORT=1025
+      - NEXTCLOUD_URL=
+      - NEXTCLOUD_API_WRAPPER_URL=
+    volumes:
+      - /DATA/AppData/$AppID/media:/opt/app/media
+      - /DATA/AppData/$AppID/static:/opt/app/static
+    networks:
+      - colmena_net
+
+networks:
+  colmena_net:
+    driver: bridge
+
+x-casaos:
+  architectures:
+    - amd64
+    - arm64
+  main: colmena-app
+  store_app_id: colmena
+  category: Media
+  author: Colmena Project
+  hostname: ""
+  index: /
+  is_uncontrolled: false
+  port_map: "8080,8000"
+  scheme: http
+  title:
+    en_us: Colmena
+  tagline:
+    en_us: Community radio & podcasting platform
+  description:
+    en_us: >-
+      Colmena is an open-source platform for community radio stations and
+      podcasters to manage shows, episodes, schedules, and listener
+      engagement. This v1 package ships the core web app and its database;
+      Nextcloud file-storage sync and outbound email are optional
+      integrations you can point at your own external services after install.
+  tips:
+    before_install:
+      en_us: >-
+        Default admin login comes from SUPERADMIN_EMAIL / SUPERADMIN_PASSWORD
+        below. Change COLMENA_SECRET_KEY and every "*-changeme" password
+        before exposing this instance beyond your LAN. After install, open
+        the Web UI on the mapped frontend port; when the app asks for a
+        server URL, enter http://<this-device-ip>:8000 to connect the
+        frontend to its own backend API. Nextcloud file sync and email are
+        not bundled in v1 - leave NEXTCLOUD_URL / EMAIL_HOST blank, or point
+        them at your own external instances.
+  icon: https://cdn.jsdelivr.net/gh/coolabnet/colmena-casaos-appstore@main/Apps/Colmena/icon.png
+  screenshot_link:
+    - https://cdn.jsdelivr.net/gh/coolabnet/colmena-casaos-appstore@main/Apps/Colmena/screenshots/screenshot-1.png
+    - https://cdn.jsdelivr.net/gh/coolabnet/colmena-casaos-appstore@main/Apps/Colmena/screenshots/screenshot-2.png
+  volumes:
+    - container: /opt/app/media
+      description:
+        en_us: Uploaded media files (audio episodes, images).
+    - container: /opt/app/static
+      description:
+        en_us: Collected static assets for the web frontend.
+    - container: /var/lib/postgresql/data
+      description:
+        en_us: Postgres database files.
