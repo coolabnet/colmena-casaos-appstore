@@ -37,8 +37,9 @@ services:
         protocol: tcp
     environment:
       - STAGE=prod
-      - DEBUG=false
+      - DEBUG=0
       - PORT=8000
+      - DATABASE_URL=postgresql://colmena:colmena-changeme@colmena-postgres:5432/colmena
       - POSTGRES_HOSTNAME=colmena-postgres
       - POSTGRES_PORT=5432
       - POSTGRES_DATABASE=colmena
