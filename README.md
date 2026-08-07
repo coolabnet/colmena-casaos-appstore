@@ -8,35 +8,42 @@ under `Apps/Colmena/`. It has no build step and no CI — it just points
 CasaOS at the pre-built `communityfirst/colmena-app` image published from
 [colmena-unified](https://github.com/coolabnet/colmena-unified).
 
-## Status: blocked on an image fix
+## Status: verified working end to end
 
 Standalone smoke-testing (no CasaOS, just `docker compose up` with this exact
-file) turned up three bugs in the currently published
-`communityfirst/colmena-app:latest` image / backend code that stop it from
+file) turned up four bugs that stopped `communityfirst/colmena-app` from
 booting at all without a live Nextcloud instance - which v1 deliberately
-doesn't bundle:
+doesn't bundle. All four are now fixed, rebuilt, republished to Docker Hub,
+and re-verified against the live `:latest` tag (not just a local build):
 
-1. **nginx never starts.** Alpine's stock `nginx.conf` only auto-includes
-   `/etc/nginx/http.d/*.conf`, but the Dockerfile drops the server block into
-   `/etc/nginx/conf.d/` (the Debian convention). Fixed in
-   `colmena-os/Dockerfile` (`conf.d` -> `http.d`), pending rebuild/republish.
-2. **`DEBUG=false` crashes Django at import time** -
+1. **nginx never started.** Alpine's stock `nginx.conf` only auto-includes
+   `/etc/nginx/http.d/*.conf`, but the Dockerfile dropped the server block
+   into `/etc/nginx/conf.d/` (the Debian convention). Fixed in
+   `colmena-os/Dockerfile` (`conf.d` -> `http.d`).
+2. **`gunicorn` didn't exist in the final image at all.** The final Docker
+   stage only copied `site-packages` from the backend-builder stage, never
+   `/usr/local/bin` - so the pip-installed `gunicorn` console script never
+   made it in. Fixed by adding a `COPY --from=backend-builder
+   /usr/local/bin/gunicorn ...` line.
+3. **`DEBUG=false` crashed Django at import time** -
    `settings/prod.py` does `bool(int(os.environ.get("DEBUG", 0)))`, which
-   only accepts `"0"`/`"1"`. Fixed in this repo's compose (now `DEBUG=0`).
-3. **Superadmin bootstrap requires a reachable Nextcloud, unconditionally.**
-   `create_superadmin` always calls out to Nextcloud's API to mint an app
-   password; the generated OpenAPI client only catches bad HTTP status
+   only accepts `"0"`/`"1"`. Fixed in this repo's compose (now `DEBUG=0`),
+   along with a missing `DATABASE_URL` (required when `STAGE=prod`).
+4. **Superadmin bootstrap required a reachable Nextcloud, unconditionally.**
+   `create_superadmin` always called out to Nextcloud's API to mint an app
+   password; the generated OpenAPI client only caught bad HTTP status
    codes, not connection failures, so any deployment without Nextcloud
-   crash-loops forever. Fixed at the source
+   crash-looped forever. Fixed at the source
    (`backend/apps/nextcloud/occ.py` + `create_superadmin.py`): connection
    errors are now caught and the superadmin is created without an app
    password when Nextcloud isn't reachable.
 
-Fixes 1 and 3 live in `colmena-os`'s Dockerfile and `luandro/backend`
-respectively - not in this repo - and need to be pushed + rebuilt +
-republished as `communityfirst/colmena-app:latest` before this app store
-actually works end to end. Verified locally via `docker build` + isolated
-`docker compose up` (not yet pushed).
+Fixes 1, 2, and 4 live in `colmena-os`'s Dockerfile and `luandro/backend`
+(branch `fix/standalone-boot-nextcloud-optional`) - not in this repo. Note
+`colmena-os`'s `.gitmodules` now points its backend submodule at
+`luandro/backend` instead of the upstream `colmena-project/dev/backend`,
+since the fix isn't merged upstream yet and this repo is slated for
+retirement anyway (see `colmena-unified` migration plan).
 
 ## Add this store to CasaOS
 
@@ -73,7 +80,6 @@ Then install "Colmena" from the Media category.
 
 ## Known gaps (tracked, not yet done)
 
-- Blocked on the image fix above being pushed and republished.
 - `/DATA/AppData/$AppID/{media,static}` need to be writable by uid 65534
   (`nobody`, the user the backend process runs as) - CasaOS's own AppData
   provisioning should handle this, but if you see `PermissionError` on first
